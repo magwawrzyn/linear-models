@@ -1,0 +1,412 @@
+---
+title: "Raport 4"
+author: "Magdalena Wawrzyniak"
+output:
+  pdf_document: default
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Zadanie 1
+
+### a)
+
+Na początek generujemy macierz X, wektor błędów losowych i wektor zmiennej odpowiedzi zgodnie z wytycznymi z zadania. Dla pierwszych trzech podpunktów usatalam ziarno równe 27.
+
+```{r cars}
+library(MASS)
+
+## funkcja generująca dane:
+
+generate <- function(seed = 27, Sigma = diag(0.1, 2) + 0.9){
+  
+  set.seed(seed)
+  
+  X  <- mvrnorm(n = 100, c(0, 0), Sigma = Sigma/100)
+  X1 <- X[, 1]
+  X2 <- X[, 2]
+  
+  epsilon <- rnorm(100)
+  
+  Y <- 3*X1 + epsilon
+  return(data.frame(Y, X1, X2))
+}
+
+
+## dane dla podpunktów a-c
+
+dane <-  generate()
+Y <- dane[, 1]
+X1 <- dane[, 2]
+X2 <- dane[, 3]
+
+```
+
+### b)
+
+Tworzymy dwa modele, model 1 z jedną zmienną objaśniającą $X_1$ i model 2 z dwiema zmiennymi $X_1$ oraz $X_2$
+
+```{r}
+## tworzenie modeli
+
+model1 <- lm(Y~X1)
+model2 <- lm(Y~X1+X2)
+
+```
+
+Tworzę funkcje, która wypisze mi w tabelce najpotrzebniejsze informacje dla tego podpunktu (i podpunktu d)
+
+```{r}
+## funkcja wypisująca potrzebne informacje 
+
+summary_model <- function(model, alpha = 0.05){
+  
+  confidance_interval <- confint(model)[2,]
+  p_value <- summary(model)$coefficient[2,4]
+  summary_data <- data.frame(c(confidance_interval, p_value))
+  rownames(summary_data) = c("2.5%", "97.5%", "p-wartość dla beta1")
+  colnames(summary_data) = c(" ")
+ 
+  return(summary_data)
+  
+}
+
+## informacje o modelach
+
+{
+info_b <- data.frame(summary_model(model1), summary_model(model2))
+colnames(info_b) <- c("Model 1", "Model 2")
+info_b
+}
+```
+Widzimy, że przedział ufności w modelu 2 jest około dwa razy szerszy, niż w modelu 1. Dostajemy również w oparciu o p-wartość, że wyniki testu na niezależność danych od $X_1$ są różne dla obu modeli, gdzie w przypadku modelu 1 możemy odrzucić hipotezę zerową, która mówi o tym że $Y$ nie zależy od $X_1$, natomiast dla modelu 2 nie mamy podstaw do odrzucenia hipotezy zerowej.  Możemy stąd wnioskować, że model 2 gorzej odzwierciedla nasze dane. 
+
+### c)
+
+Obliczam ręcznie odchylenia standardowe, i błędy standardowy dla parametru $\beta_1$ dla modelu 1. 
+
+```{r}
+## wyliczenia ręczne odchylenia standardowego dla modelu 1
+
+n <- length(X1)
+beta0_m1 <-summary(model1)$coefficients[1]
+beta1_m1 <- summary(model1)$coefficients[2]
+
+sigma2_by_hand_m1 <- sum((Y - (beta0_m1 + beta1_m1*X1))^2)/(n-2)
+sigma_by_hand_m1 <- sqrt(sigma2_by_hand_m1)
+sigma_m1 <- summary(model1)$sigma
+su <- summary(model1)
+std_error1 <- summary(model1)$coefficients[2,2]
+std_error_by_hand_m1 <- sqrt(sigma2_by_hand_m1/sum((X1 - mean(X1))^2))
+
+```
+
+Następnie wyznaczam funkcję mocy testu, z której będę korzystać przy wyliczeniach dla obu modeli. Funkcja przyjmuje bląd standardowy i parametr $\beta_1$, a także wilekość próby i liczbę stopni swobody.  
+
+```{r}
+# funkcja mocy testu
+
+#beta1/s_beta1 #parametr niecentralności
+
+power <- function(n, df, beta1, std_error){
+  
+  tc_model1 <- qt(1-0.05/2, n - df)
+  1 - pt(tc_model1, n-df, beta1/std_error) + 
+      pt(-tc_model1, n-df, beta1/std_error)
+  
+}
+
+power_m1 <- power(100, 2, beta1_m1, std_error_by_hand_m1)
+```
+
+Obliczam ręcznie odchylenia standardowe, i błędy standardowy dla parametru $\beta_1$ dla modelu 1. 
+
+```{r}
+## wyliczenia ręczne odchylenia standardowego dla modelu 2
+ 
+beta0_m2 <- summary(model2)$coefficients[1]
+beta1_m2 <- summary(model2)$coefficients[2]
+beta2_m2 <- summary(model2)$coefficients[3]
+sigma2_by_hand_m2 <- sum((Y - (beta0_m2 + beta1_m2*X1 + beta2_m2*X2))^2)/(n-3)
+sigma_by_hand_m2 <- sqrt(sigma2_by_hand_m2)
+sigma_m2 <- summary(model2)$sigma
+
+std_error2 <- summary(model2)$coefficients[2,2]
+std_error_by_hand_m2 <- sqrt(sigma2_by_hand_m2/
+                               sum((X1 - mean(X1))^2)) # tu jest gdzieś błąd 
+
+
+power_m2 <- power(100, 3, beta1_m2, std_error1)
+
+power_m2 <- power(100, 3, beta1_m2, std_error2)
+std_deviation_2_date <- data.frame(c(sigma_by_hand_m2, sigma_m2, 
+                                     std_error_by_hand_m2, std_error2,
+                                     power_m2))
+rownames(std_deviation_2_date) <- c("odchylenie standardowe wyliczony ręcznie", 
+                                    "odchylenie standardowe z R",
+                                    "błąd wyliczony ręcznie", "błąd z R", 
+                                    "moc testu" )
+colnames(std_deviation_2_date) <- c("Model 2")
+
+```
+
+W związku z tym, że w wyliczeniach błędu standardowego ręcznie jest błąd dla modelu 2, to moc testu wyliczyłam na podstawie tego co otrzymałam z funkcji z R. Poniżej mamy tabelą z wynikami dla obu modeli.
+
+```{r}
+# wyniki
+std_deviation_1_date <- data.frame(c(sigma_by_hand_m1, sigma_m1, std_error_by_hand_m1, 
+                                     std_error1, power_m1))
+rownames(std_deviation_1_date) <- c("odchylenie standardowe wyliczony ręcznie", 
+                                    "odchylenie standardowe z R",
+                                    "błąd wyliczony ręcznie", "błąd z R", "moc testu")
+colnames(std_deviation_1_date) <- c("Model 1")
+
+short_summary <- data.frame(std_deviation_1_date, std_deviation_2_date)
+short_summary
+```
+Odchylenia standardowe dla obu modeli są sobie bardzo bliskie, ale dla modelu 1 jest odrobinę mniejsze.
+
+Widzimy, że moc testu dla modelu 2 nie jest zadowalająca. Odrzucanie wyniku na podstawie tego testu jest prawie tak skuteczny jak odrzucanie go na podstawie wyniku rzutu monetą. 
+
+### d)
+
+```{r}
+v_beta1_m1 = c()
+v_beta1_m2 = c()
+p_value_m1 = c()
+p_value_m2 = c()
+std_error_m1 = c()
+std_error_m2 = c()
+power_m1 = c()
+power_m2 = c()
+
+for (i in 1:1000){
+
+# generujemy dane
+ dane <- generate(seed = i)
+  Y <- dane[, 1]
+  X1 <- dane[, 2]
+  X2 <- dane[, 3]
+  
+# tworzymy modele  
+  model1 <- lm(Y~X1)
+  model2 <- lm(Y~X1+X2)
+
+# parametr beta1 modelu 1  
+  v_beta1_m1[i] <- summary(model1)$coefficients[2]
+  
+# p-wartość dla modelu 1 
+  p_value_m1[i] = summary(model1)$coefficient[2,4]
+  
+# parametr beta1 modelu 2 
+  v_beta1_m2[i] <- summary(model2)$coefficients[2]  
+  
+# p-wartość dla modelu 2
+  p_value_m2[i] = summary(model2)$coefficient[2,4]
+
+# odchylenie standardowe dla beta 1 i moc testu dla modelu 1  
+  std_error_m1[i] <- summary(model1)$coefficients[2,2]
+  power_m1[i] = power(100, 2, v_beta1_m1[i], std_error_m1[i])
+  
+# odchylenie standardowe dla beta 1 i moc testu dla modelu 2  
+  std_error_m2[i] <- summary(model2)$coefficients[2,2]
+  power_m2[i] = power(100, 3, v_beta1_m2[i], std_error_m2[i])
+}
+est_beta1_m1 <- mean(v_beta1_m1)
+est_std_error_m1 <- mean(std_error_m1)
+est_p_value_m1 <- mean(p_value_m1)
+est_power_m1 <- mean(power_m1)
+
+est_beta1_m2 <- mean(v_beta1_m2)
+est_std_error_m2 <- mean(std_error_m2)
+est_p_value_m2 <- mean(p_value_m2)
+est_power_m2 <- mean(power_m2)
+```
+
+```{r}
+
+teor_m1 <- data.frame(c(beta1_m1, short_summary$Model.1[4], info_b$`Model 1`[3],
+                        short_summary$Model.1[5]))
+teor_m2 <- data.frame(c(beta1_m2, short_summary$Model.2[4], info_b$`Model 2`[3], 
+                        short_summary$Model.2[5]))
+est_m1 <- data.frame(c(est_beta1_m1, est_std_error_m1, est_p_value_m1, est_power_m1))
+est_m2 <- data.frame(c(est_beta1_m2, est_std_error_m2, est_p_value_m2, est_power_m2))
+results <- data.frame(teor_m1, est_m1, teor_m2, est_m2)
+colnames(results) = c("Model 1 teor.", "Model 1 est.", "Model 2 teor.", "Model 2 est.")
+rownames(results) = c("beta 1", "s dla beta 1", "p-wartość", "moc testu")
+results
+```
+
+Dla modelu 1 wyniki teoretyczne i wyestymowane są do siebie zbliżone, niewystępują bardzo duże odchylenia. Wprzypadku wyników dla modelu 2 różnice są trochę większe, może być to rezultat kiepskiego dopasowywania modelu do danych, co generowało więcej błędów.
+
+
+## Zadanie 2 
+
+### a)
+
+Na początek generujemy macierz X i wektor beta. Ustalamy ziarno równe 27. 
+
+```{r }
+set.seed(27)
+
+X <- matrix(rnorm(950000, 0, 0.1), nrow = 1000)
+
+beta <- rep(0,1000)
+beta[1:5] <- 3
+```
+
+### b)
+
+Tworzymy funkcje, która wyliczy wartości $SSE$, $MSE$, $AIC$, p-wartości dla pierwszych odpowiadające dwóm pierwszym zmiennym objaśniającym oraz liczba fałszywych odkryć. Wewnątrz funkcji generujemy Y i wyniki zapisujemy w tabeli. Na ich podstawie tworzymy modele i wyliczamy potrzebna w tym zadaniu dane.
+
+```{r message=FALSE, warning=FALSE}
+p = 950
+n = c(1, 2, 5, 10, 50, 100, 500, 950)
+
+compiut = function(n){
+  Y = 0
+  p_val_2 = NA
+  for(i in 1:n){
+    Y = Y + X[i,]*beta[i]
+  }
+  Y = Y + rnorm(1000)
+  
+  
+  data = data.frame(Y,X)
+  lin_m = lm(Y~X[, 1:n] - 1, data=data)
+  summ_m = summary(lin_m)
+  
+  est_beta = lin_m$coefficients
+  
+  sse = sum(lin_m$residuals^2)
+  mse = sse/(1000-p)
+  aic = AIC(lin_m)
+  p_val_1 = summ_m$coefficients[1,4]
+  if (i > 2){
+    p_val_2 = summ_m$coefficients[2,4]
+  }
+  
+  f_discovery = rep(0,n)
+  for (i in c(1:n)){
+    if (summ_m$coefficients[i,4] < 0.05){
+      f_discovery[i] = 1
+    }
+  }
+  false_disc = sum(f_discovery[5:n])
+  if (n < 6){
+    false_disc = 0
+  }
+  result = c(sse, mse, aic, p_val_1, p_val_2, false_disc)
+  for (i in 1:length(result)){
+    result[i] = round(result[i],3)
+  }
+  return(result)
+}
+
+tabelka = function(nn){
+  results <- data.frame(
+    k=double(), sse=double(), mse=double(), aic=double(), 
+    p_val_1=double(), p_val_2=double(), false_disc=double())
+  
+  for (i in n) {
+    
+    res <- compiut(i)
+    
+    results <- rbind(results, data.frame(k=i, sse=res[1], mse=res[2], aic=res[3], 
+                          p_val_1=res[4], p_val_2=res[5], false_disc=res[6]))
+  }
+  colnames(results) = c('k', 'SSE', 'MSE', 'AIC', 
+                        'p-wartość 1', 'p-wartść 2', 'false discoveries')
+  rownames(results) = c(1:length(n))
+  return(results)
+}
+results1 = tabelka(n)
+
+```
+
+Wyniki dla poszczególnych k-pierwszych kolumn macierzy wyglądają u nas następująco:
+
+```{r}
+results1
+
+```
+Kryteria AIC jest modyfikacją metody największej wiarogodności i sąskonstruowaną w taki sposób, by znaleźć balans pomiędzy dopasowaniem modelu do danych, a nadmierną złożonością modelu. W przypadku AIC istotne znaczenie ma statystyka SSE. Model, który należy wybrać powinien charakteryzować się jak najniższą wartością statystyki AIC.
+Na podstawie tych danych, model, który zostałby wybrany na podstawie wartości AIC to ten z największą ilością kolumn $k = 950$ z wartością AIC `r results1$AIC[8]`. 
+
+## (c)
+
+Powtarzamy podpunkt (b), ale korzystając z największych (a nie pierwszych) oszacowanych współczynnikach regresji.
+
+W tym celu modyfikujemy funkcję `compiut`, tak  że porządkujemy nasze dane od największych do najmniejszych i następnie na ich podstawie tworzymy model.
+
+```{r message=FALSE, warning=FALSE}
+compiut_c = function(n){
+  Y =0
+  p_val_2 = NA
+  for(i in 1:n){
+    Y = Y + X[i,]*beta[i]
+  }
+  Y = Y + rnorm(1000)
+  data = data.frame(Y,X)
+  
+  lin_m = lm(Y~X[,1:n]-1, data=data)
+  est_beta = lin_m$coefficients
+  
+
+  lin_m = lm(Y~X[, order(abs(est_beta),decreasing = TRUE)[1:n]]-1, data=data)
+  summ_m = summary(lin_m)
+  
+  p_val_2 = NA  
+  sse = sum(lin_m$residuals^2)
+  mse = sse/(1000-p)
+  aic = AIC(lin_m)
+  p_val_1 = summ_m$coefficients[1,4]
+  if (i > 2){
+    p_val_2 = summ_m$coefficients[2,4]
+  }
+  
+  f_discovery = rep(0,n)
+  for (i in c(1:n)){
+    if (summ_m$coefficients[i,4] < 0.05){
+      f_discovery[i] = 1
+    }
+  }
+  false_disc = sum(f_discovery[5:n])
+  if (n < 6){
+    false_disc = 0
+  }
+  result = c(sse, mse, aic, p_val_1, p_val_2, false_disc)
+  for (i in 1:length(result)){
+    result[i] = round(result[i],3)
+  }
+  return(result)
+}
+
+tabelka_c = function(n){
+  results <- data.frame(
+    k=double(), sse=double(), mse=double(), aic=double(), 
+    pwartx1=double(), pwartx2=double(), false_disc=double())
+  
+  for (i in n) {
+    
+    res <- compiut_c(i)
+    
+    results <- rbind(
+      results, data.frame(k=i, sse=res[1], mse=res[2], aic=res[3], 
+                          p_val_1=res[4], p_val_2=res[5], false_disc=res[6]))
+  }
+  colnames(results) = c('k', 'SSE', 'MSE', 'AIC', 
+                        'p-wartość 1', 'p-wartość 2', 'false discoveries')
+  rownames(results) = c(1:length(n))
+  return(results)
+}
+
+results2 = tabelka_c(n)
+results2
+```
+
+Tak jak można było się tego spodziewać, na podstawie wartości AIC modelem, który powinnniśmy wybrać jest znów ten z największą ilością kolumn $k = 950$ i wartością AIC `r results2$AIC[8]`.
+

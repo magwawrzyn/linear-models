@@ -1,0 +1,506 @@
+---
+title: "Raport 3"
+author: "Magdalena Wawrzyniak"
+date: ''
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r include=FALSE}
+# biblioteki
+library(dplyr)
+library(ggpubr)
+library(ggplot2)
+library(MASS)
+set.seed(13)
+```
+
+## Wprowadzenie
+
+### Użyte funkcje
+
+W tym raporcie spora część zadań opierała się na tym samym, w związku z tym na początek utworzyłam najpotrzebniejsze funkcje, z których będę korzystać w trakcie. Zanim przejdziemy do omówienia zadań przyjrzyjmy się z czego będziemy korzystać, tak aby w dalszej części raportu już tego nie tłumaczyć tak szczegółowo. Ziarno ustawiono na 13.
+
+Pierwsza funkcja, z której będziemy korzystać praktycznie w każdym zadaniu, to funkcja o nazwie ```model```. Przyjmuje ona ramkę danych, a także numery kolumn X oraz Y, czyli zmiennych objaśniającej i objaśnianej. Na wyjściu otrzymujemy model regresji liniowej dla podanych danych.
+
+```{r}
+model <- function(data_for_model, nr_col_X, nr_col_Y){
+  X_name <- data_for_model[, nr_col_X]
+  Y_name <- data_for_model[, nr_col_Y]
+  model_name <-  lm(Y_name~X_name, data_for_model)
+  return(model_name)
+}
+```
+
+Kolejna funkcja z jakiej będziemy korzystać, to funkcja o nazwie ```summary_of_model```, która przyjmuje w argumencie model i wybiera z niego najistotniejsze dla nas informacje. Wynikiem jej działania jest krótka tabelka z podsumowaniem dla modelu.
+
+```{r}
+summary_of_model <- function(model_name){
+   intercept <- coefficients(model_name)[1] 
+   slope     <- coefficients(model_name)[2] 
+   R2        <- summary(model_name)$r.squared
+   t_value   <- summary(model_name)$coefficients[2,3]
+   p_value   <- summary(model_name)$coefficients[2,4]
+   sigma2    <- (summary(model_name)$sigma)^2
+   F_value   <- summary(model_name)$fstatistic[1]
+   score     <- c(intercept, slope, R2, t_value, p_value, sigma2, F_value)
+   table_mod <- data.frame(round(score, 4))
+   colnames(table_mod) <- "wyniki"
+   rownames(table_mod) <- c("wyraz wolny", "wsp. kierunkowy", "R2", "wartość statystyki t ", "p-wartość", "sigma2", "wartość F")
+  return(table_mod)
+}
+```
+
+Następne trzy funkcje dotyczą tworzenia wykresów. Pierwsza z nich o nazwie ```graph_pred``` przeprowadza predykcje na podstawie wprowadzonych danych, a następnie generuje (jeżeli ```typ = TRUE```) wykres z naszej próby, z zaznaczonym przedziałem predykcji oraz prostą regresji. Jeżeli zmienimy typ na ```FALSE```, to zamiast wykresu otrzymamy ramkę danych z wynikami predykcji, na których później możemy jeszcze samodzielnie manipulować. Opcja ta została wprowadzona przez formę zadań 10-12, w których manipulujemy tymi wynikami, aby lepiej dopasować model.
+Argumenty jakie należy wprowadzić, to kolejno: ramka danych, model, numery kolumn dla X i Y, nazwy osi $x$ i $y$, no i oczywiście opcjonalnie typ.
+
+```{r}
+
+graph_pred <- function(data_for_model, model_name, nr_col_X, nr_col_Y, 
+                       name_xlab, name_ylab, typ = TRUE){
+  
+  X_name <- data_for_model[, nr_col_X]
+  Y_name <- data_for_model[, nr_col_Y]
+  
+  prediction <- data.frame(predict(model_name, 
+                          newdata = data.frame(X_name = data_for_model[, nr_col_X]), 
+                          interval = "prediction"))
+  data_graph <- cbind(data_for_model, prediction)
+  
+  graph <- ggplot(data_graph, aes(x = X_name, y = data_graph[, nr_col_Y])) +
+              geom_point() +
+              geom_line(aes(x = X_name, y = fit), col = "red") +
+              geom_ribbon(aes(ymin = lwr, ymax = upr), alpha = 0.4) +
+              xlab(name_xlab) + ylab(name_ylab)
+  if (typ == TRUE){
+    return(graph) 
+  }
+  else return(data_graph)         
+}
+```
+
+Kolejna funkcja przyda się w zadaniu 5 i zadaniu 6, ponieważ to dzięki niej będziemy rysować wykresy dla reszt (residuów). Poza argumentem typ, pozostałe przyjmujemy takie same jak dla poprzedniej funkcji. Dodatkowo możemy jeszcze określić czy chcemy uwzględniać kolejność danych występujących w pliku, z którego wgrywamy dane (```sorting = FALSE``` ozn. nie uwzględniamy).
+
+```{r}
+res_graph <- function(data_for_model, model_name, nr_col_X = 2, sorting = FALSE,
+                      name_xlab = "liczba kopiarek", name_ylab = "residua"){
+  residua    <- model_name$residuals
+  n <- length(residua)
+  X_name <- data_for_model[, nr_col_X]
+  if (sorting == TRUE){
+    X_name <- sort(X_name)
+  }
+  graph_data <- data.frame(X_name, residua)
+  graph <- ggplot() +
+              geom_point(graph_data, 
+                         mapping = aes(x = X_name, y = residua)) +
+              geom_point(graph_data[1, ], 
+                         mapping = aes(x = X_name[1], y = residua[1]), 
+                         colour = "blue") +
+              geom_line(mapping = aes(x = X_name, y = 0), colour = "red") +
+              xlab(name_xlab) + ylab(name_ylab)
+  return(graph)
+}
+```
+
+Ostatnią omówioną przez nas funkcją będzie ```normal_dist```, która rysuje histogram z zaznaczonym rozkładem normalnym. Również przyda się w zadaniach 5 i 6. Jej argumentem jest model.
+
+```{r}
+normal_dist <- function(model_name){
+  residua    <- model_name$residuals
+  X_name <- seq(min(residua), max(residua), by=0.1)
+  d      <- dnorm(X_name)
+  
+  graph  <- ggplot() +
+              geom_histogram(aes(x = residua, y = ..density..), 
+                             bins = 15, colour = "white") +
+              geom_density(data.frame(residua), mapping = aes(x = residua), lwd = 1,
+                           colour = 4, fill = 4, alpha = 0.25) +
+              xlab("residua")
+              
+ return(graph)
+  
+}
+```
+
+
+### Wgrywanie danych
+
+Po omówieniu funkcji przejdźmy do krótkiego opisu zadań i wgrania danych z plików.
+
+W zadaniu 3 i 4 będziemy korzystać z danych zapisanych w pliku ```tabela1_6.txt```, zawierającego średnią ocen (GPA) , wynik standardowego testu IQ, płeć oraz wynik testu psychologicznego -  Piers-Harris Childrens Self - Concept Scale, dla 78 uczniów klasy siódmej.
+
+```{r}
+# Zad 3, 4
+GPA_data <- read.table("~/Uczelnia/Semestr_5.1/Modele_liniowe/ML_Lista_3/tabela1_6.txt")
+GPA_data <- GPA_data[,c(2:5)]
+
+colnames(GPA_data) <- c("GPA","score on IQ test", "gender", "score on the P-H test")
+```
+
+W zadaniu 5 i 6 korzystamy z danych, które omawialiśmy w raporcie 2(```CH01PR20.txt```). Będziemy badać czas serwisowania kopiarek Y), w zależności od ich ilości (X). W 6 zadaniu podmieniamy czas z pierwszego wiersza, z $20$ na $2000$.
+
+```{r}
+# Zad 5, 6
+copy_machines_1 <- read.table("CH01PR20.txt", 
+                            col.names = c("time", "copiers"))
+copy_machines_2 <- copy_machines_1
+copy_machines_2[1,1] <- 2000
+```
+
+W przypadku następnych sześciu zadań użyjemy danych z pliku ```CH03PR15.txt```. W pierwszej kolumnie podane są wartości stężenia roztworu (zmienna objaśniana), a w drugiej czas (zmienna objaśniająca). W zadaniu 12 zmieniamy dane zgodnie z treścią, tak aby czas był teraz równy $czas^{-\frac{1}{2}}$. 
+
+```{r}
+# Zad 7-12
+solution_concentration  <- read.table("CH03PR15.txt", 
+                                      col.names = c("concentration", "time" ))
+## do 10
+log_solution_concentration <- solution_concentration
+log_solution_concentration[, 1] <- log(log_solution_concentration$concentration)
+## do 12
+sqrt_solution_concentration <- solution_concentration
+sqrt_solution_concentration[, 2] <- 1/sqrt(log_solution_concentration$time)
+```
+
+## Zadanie 3
+
+
+### (a)
+
+W podpunkcie pierwszym proszą nas o stworzenie morelu regresji liniowej, a następnie podanie wartości $R^2$, współczynników modelu, a także wartości statystyki testowej F i p-wartość.
+
+```{r cars}
+
+model_IQ   <- model(GPA_data, 2, 1)
+summary_IQ <- summary_of_model(model_name = model_IQ) 
+summary_IQ
+
+```
+Dostajemy równanie regresji postaci:
+$$\hat{ Y } = 0.1010 X - 3.5570558 $$
+Na podstawie powyższych obserwacji skonstruowany jest tzw. test F testujący czy współczynnik kierunkowy jest różny od 0:
+
+H0: Y jest niezależny od X, 
+
+H1: Y zależy od X;
+
+Odrzucamy hipotezę zerową, gdy $F=\frac{MSM}{MSE} > F_c$, gdzie $F_c = F^∗(1−\alpha, 1, n−2)$ jest kwantylem rzędu $1−\alpha$ z rozkładu Fishera–Snedecora z $1$ i $n-2$ stopniami swobody.
+
+Możemy policzyć to ręcznie. Statystykę testową F wyliczamy ze wzór $$F=MSM/MSE,$$ gdzie 
+$$MSM=\sum^n_{i=1}(\hat{Y_i}− mean(Y_i))^2,$$
+$$MSE=\frac{\sum^n_{i=1}(Y_i−\hat{Y_i})^2}{n-2} = s^2.$$
+Zwykle, wnioskowanie dokonywane jest na podstawie p-wartości:$p=P(z>F),$ gdzie $z∼F(1, n−2)$
+Tak samo możemy wyliczyć miarę dopasowania modelu, czyli
+$$R^2 = \frac{SSM}{SST}.$$ Może to wyglądać przykładowo tak ja na dole:
+
+```{r}
+n = 78
+SSE <- sum((GPA_data$GPA - GPA_data$`score on IQ test`*0.1010+3.5571)^2)
+SST <- sum((GPA_data$GPA- mean(GPA_data$GPA))^2)
+SSM <- SST - SSE
+dfE <- n - 2
+dfM <- 1
+dfT <- dfE + dfM
+MSM <- SSM/dfM
+MSE <- SSE/dfE
+F_stat <- MSM/MSE
+F_stat
+qf(0.95,df1=1, df2=n-2)
+R2 <- SSM/SST
+R2
+F_stat > qf(0.95,df1=1, df2=n-2)
+```
+Oczywiście zamiast statystyki F możemy zastosować statystykę t, ponieważ nasz model posiada tylko jedną zmienną objaśniającą. Niezależnie od tego otrzymujemy, że hipoteze zerową należy odrzucić i przyjąć hipotezę alternatywną, że średnia ocen zależy od poziomu IQ.
+
+### (b)
+
+W podpunkcie (b) wyznaczamy przewidywaną wartość GPA dla ucznia, który w teście IQ osiągnął wynik równy 100. Dodatkowo musimy podać przedział predykcji, przy $\alpha = 0.1$.
+
+```{r}
+predict(model_IQ,
+        newdata = data.frame(X_name = 100),
+        interval = "prediction",
+        lerd = 0.9)
+
+```
+Według modelu wartość średniej będzie należeć do przedziału pomiędzy 3.25, a 9.83, chociaż jeżeli obserwacja będzie zachowywać się zgodnie z zadanym przez nas modelem, to powinniśmy otrzymać wynik bliski 6.55.
+
+### (c)
+
+W podpunkcie (c) rysujemy przedział predykcyjny dla naszych danych, przy $\alpha = 0.05$.
+
+```{r}
+graph_pred(GPA_data, model_IQ, 2, 1, "Wyniki testu IQ", "Średnia")
+```
+
+Możemy zobaczyć, że mamy 4 wartości, które nie zmieściły się w narysowanym przez nas pasie. Mogliśmy się tego spodziewać, ponieważ liczby wartości wykraczających poza przedział predykcyjny podzielona przez liczbę obserwacji powinna być równa w przybliżeniu $\alpha= 0.05$, ```round(4/78, 2)```. Niestety leżą one dość daleko od prostej predykcji, z resztą już po wielkości $R^2$ można było wnioskować, że model mógłby lepiej opisywać nasze dane.
+
+
+## Zadanie 4
+
+W tym zadaniu będziemy badać zależność między średnią ocen - GPA  (Y), a wynikami testu Piersa-Harrisa (X). 
+
+### (a)
+
+W podpunkcie (a) mamy podać dopasowane równanie regresji i $R^2$.
+
+```{r}
+model_PH <- model(GPA_data, 4, 1)
+summary_PH <- summary_of_model(model_PH)
+summary_PH
+summary_PH[7,1] > qf(0.95,df1=1, df2=n-2)
+```
+
+Dostajemy równanie regresji postaci:
+$$\hat{ Y } = 0.0917 X + 2.2259 $$
+Przeprowadzając test na podstawie statystyki F:
+
+H0: Y jest niezależny od X, 
+
+H1: Y zależy od X;
+
+dostajemy, że odrzucamy hipotezę zerową i przyjmujemy alternatywną.
+
+### (c)
+
+W podpunkcie (c) wyznaczamy przewidywaną wartość GPA dla ucznia, który w teście Piersa-Harrisa osiągnął wynik równy 60. Dodatkowo musimy podać przedział predykcji, przy $\alpha = 0.1$.
+
+```{r}
+predict(model_PH,
+        newdata = data.frame(X_name = 60),
+        interval = "prediction",
+        lerd = 0.9)
+```
+Interpretacja analogiczna jak w zadaniu 3.
+
+### (d)
+
+W podpunkcie (d) rysujemy przedział predykcyjny dla naszych danych, przy $\alpha = 0.05$
+
+```{r}
+
+graph_pred(GPA_data, model_PH, 4, 1, "Wyniki testu Piers-Harrisa", "Średnia")
+
+```
+
+Dla testu Piers-Harris tylko 3 wyniki wyszły poza wyznaczony przedział predykcyjny, co oczywiście jest wynikiem w pełni akceptowalnym, ponieważ tak jak poprzednim razem, poza przedziałem predykcji może się znaleźć do 4 punktów.
+
+
+### (e)
+
+```{r}
+# Porównywanie modeli
+
+comparison_1 <- cbind(summary_IQ, c(" ", " ", "    > ", "    > ", "    = ", "    < ", "    >"), summary_PH)
+  
+colnames(comparison_1) <- c("test IQ", " ", "test Piers-Harrisa" )
+comparison_1
+```
+Lepszy model to ten z większymi wartościami $R^2$, statystyki t i statystyki F, natomiast mniejszą p-wartością i $\sigma^2$. Po zestawieniu ze sobą wyników dla obu modeli dostajemy, że model z wynikami testu IQ lepiej opisuje nasze dane, niż model stworzony na podstawie danych z testu Piers-Harrisa.
+
+## Zadanie 5
+
+### (a) 
+Tworzymy model dla nowych danych i sprawdzamy, czy suma reszt wynosi zero.
+
+```{r}
+# a)
+
+model_copy_1 <- model(copy_machines_1, 2, 1)
+
+sum(model_copy_1$residuals)
+```
+Dokładny wynik jest bardzo bliski 0.
+
+### (b)
+
+```{r}
+# b)
+res_graph(copy_machines_1, model_copy_1)
+```
+
+W residua nie układają się w żaden wzór i nie skupiają się w jednej określonej wartości.
+
+### (c)
+
+```{r}
+# c) 
+
+res_graph(copy_machines_1, model_copy_1, sorting = TRUE)
+```
+
+Tak samo jak w  (b), nie zauważamy nic niezwykłego.
+
+### (d)
+
+```{r message=FALSE, warning=FALSE}
+
+normal_dist(model_copy_1)
+res_copy_1 <- model_copy_1$residuals
+
+ggqqplot(res_copy_1)
+shapiro.test(res_copy_1)
+```
+
+Po przeprowadzeniu testu Shapiro-Wilka, do sprawdzenia normalności rozkładu, nie ma przesłanek do odrzucenia hipotezy zerowej - reszty są z rozkładu normalnego, dlatego zastosowanie regresji liniowej jest tutaj w pełni zrozumiałe i trafne. Wykres kwantylowo kwantylowy również wygląda zadowalająco. Na histogramie nie wygląda to aż tak dobrze, ale może być to spowodowane złym naniesieniem danych, bardziej przypomina rozkład t-studenta.
+
+## Zadanie 6
+
+### (a)
+```{r}
+model_copy_2 <- model(copy_machines_2, 2, 1)
+
+sum(model_copy_2$residuals)
+
+summary_copy_1 <- summary_of_model(model_copy_1)
+summary_copy_2 <- summary_of_model(model_copy_2)
+
+comparison_2 <- cbind(summary_copy_1, 
+                    c(" ", " ", "    > ", "    > ", "    < ", "    < ", "  >"), 
+                    summary_copy_2)
+colnames(comparison_2) <- c("model 1", " ", "model 2" )
+comparison_2
+```
+Widzimy, że w modelu z stworzonym ze zmienionych danych, suma reszt jest 50 razy większa większa niż pierwotnie. Ponad to w tabeli widać znaczące różnice między nowym a starym modelem, przeważające na na korzyść modelu bez tak dużych danych odstających.
+
+### (b)
+
+```{r}
+# b)
+
+res_graph(copy_machines_2, model_copy_2)
+
+res_graph(copy_machines_2, model_copy_2, sorting = TRUE)
+
+normal_dist(model_copy_2)
+res_copy_2 <- model_copy_2$residuals
+
+ggqqplot(res_copy_2)
+shapiro.test(res_copy_2)
+```
+
+Po obejrzeniu wykresów wnioskujemy, że nawet jeden punkt znacząco odstający od pozostałych, tak bardzo psuje nasz model, że nie możemy wnioskować na ich podstawie. Hipotezy, które normalnie byśmy odrzucili przyjmujemy i na odwrót. Model regresji liniowej jest wrażliwy na punkty odstające.
+
+## Zadanie 7
+
+```{r}
+model_concentration   <- model(data_for_model = solution_concentration, 2, 1)
+summary_concentration <- summary_of_model(model_name = model_concentration) 
+summary_concentration
+```
+Dla statystyki t odrzucamy hipotezę zerową, która mówi o tym, że dane nie zależą od zmiennaj objaśniającej. Model jest całkiem dobrze dopasowany do danych.
+
+
+## Zadanie 8
+
+```{r}
+graph_pred(solution_concentration, model_concentration, 2, 1, 
+           "Czas", "Stężenie roztworu" )
+
+cor(solution_concentration$concentration, model_concentration$fitted.values)
+```
+
+Nasz model nie wygląda tak źle. Jednak możemy zauważyć, że da się go lepiej dopasować, ze względu na kształt w jaki się układają wyniki.
+
+## Zadanie 9
+
+Transformacja Boxa–Coxa umożliwia wybór optymalnego przekształcenia, takiego by między danymi zachodziła zależność liniowa. W R wygląda to następująco.
+
+
+```{r}
+box_cox_model_1 <- boxcox(lm(model_concentration))
+box_cox_model_1$x[which.max(box_cox_model_1$y)]
+```
+ Innym sposobem jest wyliczenie ręczne:
+ 
+$$
+f_\lambda(x) = 
+\begin{cases}
+\frac{x^\lambda -1}{\lambda} \text{ }\text{ }\text{ }\text{ }\text{ }\text{ for }\lambda\neq 0 \\
+\log(x)\text{}\text{}\text{ }\text{ }\text{ }\text{ for }\lambda = 0
+\end{cases}.
+$$
+
+## Zadanie 10
+
+Gdy już naniesiemy poprawki na dane, to możemy ponownie spróbować dopasować nowy model.
+
+```{r message=FALSE, warning=FALSE}
+log_model_concentration <-  model(log_solution_concentration, 2, 1)
+log_summary_concentration <- summary_of_model(log_model_concentration) 
+log_summary_concentration
+
+graph_pred(log_solution_concentration, log_model_concentration, 2, 1, 
+           "Czas", "Stężenie roztworu" )
+
+cor(log_solution_concentration$concentration, 
+    log_model_concentration$fitted.values)
+```
+
+Jak widać jest on dopasowany prawie idealnie. 
+
+## Zadanie 11
+
+Gdy już mamy dobrze dopasowany model przydałoby się wrócić z danymi do pierwotnej postaci. W tym celu zastosujemy przekształcenie odwrotne.
+
+```{r message=FALSE, warning=FALSE}
+new_fit <- graph_pred(log_solution_concentration, log_model_concentration, 2, 1, 
+           "Czas", "Stężenie roztworu", typ = FALSE )
+
+new_fit <- cbind(exp(new_fit$concentration), new_fit$time, exp(new_fit[, 3:5]))
+colnames(new_fit) <- c("concentration", "time", "fit", "lwr", "upr")
+
+ggplot(new_fit, aes(x = new_fit$time, y = new_fit$concentration)) +
+  geom_point() +
+  geom_line(aes(x = new_fit$time, y = fit), col = "red") +
+  geom_ribbon(aes(ymin = lwr, ymax = upr), alpha = 0.4) +
+  xlab("Czas") + ylab("Stężenie roztworu")
+
+cor(solution_concentration$concentration, 
+    exp(log_model_concentration$fitted.values))
+
+```
+Tak oto prezentują się nasze dane z dobrze dopasowanym do nich modelem.
+
+## Zadanie 12
+
+Zadanie 12 jest powtórką z 4 ostatnich zadań. W pierwszej kolejności próbujemy dopasować model na dane, które jeszcze nie są przekształcone, następnie podmieniamy wartości zmiennej objaśniającej i jeszcze raz próbujemy dopasować model. Gdy udaje się, wracamy z danymi. 
+
+```{r message=FALSE, warning=FALSE}
+
+  sqrt_model_concentration <-  model(sqrt_solution_concentration, 2, 1)
+  sqrt_summary_concentration <- summary_of_model(sqrt_model_concentration) 
+  sqrt_summary_concentration
+  
+  graph_pred(sqrt_solution_concentration, sqrt_model_concentration, 2, 1, 
+             "Czas", "Stężenie roztworu" )
+  
+  cor(sqrt_solution_concentration$concentration, 
+      sqrt_model_concentration$fitted.values)
+  
+  new_fit_2 <- graph_pred(sqrt_solution_concentration, sqrt_model_concentration, 2, 1, 
+                        "Czas", "Stężenie roztworu", typ = FALSE )
+  
+  new_fit_2 <- cbind((new_fit_2$concentration), 1/new_fit_2$time^2, (new_fit_2[, 3:5]))
+  colnames(new_fit_2) <- c("concentration", "time", "fit", "lwr", "upr")
+  
+  ggplot(new_fit_2, aes(x = new_fit_2$time, y = new_fit_2$concentration)) +
+    geom_point() +
+    geom_line(aes(x = new_fit_2$time, y = fit), col = "red") +
+    geom_ribbon(aes(ymin = lwr, ymax = upr), alpha = 0.4) +
+    xlab("Czas") + ylab("Stężenie roztworu")
+  
+  cor(solution_concentration$concentration, 
+      (new_fit_2$fit))
+```  
+
+
+
+
+
+

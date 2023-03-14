@@ -1,0 +1,358 @@
+---
+title: "Raport 2 Modele liniowe"
+author: "Magdalena Wawrzyniak"
+date: "2022-11-28"
+output:
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Zadanie 1
+
+W tym raporcie będziemy analizować dane z pliku ```ch01pr20.txt```, który przedstawia czas serwisowania kopiarek. Aby łatwiej było zacząć analizować nasze dane obejrzmy je na wykresie. Wgrywamy dane do R przy użyciu komendy read.table, ustawiamy ziarno (ja wybrałam 17, bo nie pamiętałam na jakie się umawialiśmy na zajęciach), a następnie przy użyciu funkcji z pakietu ```ggplot2``` generujemy wykres, który widzimy poniżej.  
+```{r echo=FALSE}
+library(ggplot2)
+set.seed(17)
+
+# Wygrywanie danych
+
+copier_service <- read.table("//Users/magdalenawawrzyniak/Uczelnia/Semestr_5.1/Modele_liniowe/ML_Lista_2/CH01PR20.txt", col.names = c("service", "copiers"))
+X <- copier_service[,"copiers"]
+Y <- copier_service[, "service"]
+
+
+# ==============================================================================
+# Zad. 1 
+
+ggplot(copier_service, aes(x = copiers, y = service)) + geom_point() 
+```
+
+Możemy zauważyć, że nasze dane wykazują pewną korelację. Na podstawie wykresu możemy stwierdzić, że dane wykazują zależność w przybliżeniu liniową. Jest to dobra podstawa do tego, aby rozważać model regresji liniowej prostej.
+
+## Zadanie 2
+
+Rozważmy teoretyczny model regresji liniowej. W tym modelu zakładamy, że związek pomiędzy zmiennymi zależnymi Y (service) i odpowiadającymi im wartościami zmiennych niezależnych X (copiers) jest postaci:
+$$ Y _i= \beta_0 + \beta_1 X_i + \epsilon_i,$$
+gdzie:
+
+$\beta_0$ - intercept - wyraz wolny, parametr deterministyczny,
+
+$\beta_1$ - slope - współczynnik kierunkowy, parametr deterministyczny,
+
+$\epsilon_i$ - błąd pomiarowy, zmienna losowa z rozkładu $N(0,\sigma^2)$, i.i.d dla każdego $i \in {1...,n}$
+
+Znajomość parametrów $\beta_0,$ $\beta_1,$ $\sigma^2$ możemy generować wartości zmiennej $Y_i$ dla dowolnych wartości $X_i$, co umożliwia przeprowadzanie symulacji i doświadczeń. My dysponujemy tylko zbiorem par postaci $(X_i,Y_i)$, ale na ich podstawie możemy estymować parametry, na których nam zależy. Na wykładzie poznaliśmy dwie metody estymacji parametrów, tj. Metoda najmniejszych kwadratów oraz metoda największej wiarogodności. Za ich pomocą otrzymaliśmy estymatory postaci:
+$$\hat{\beta_1} = \frac{\sum_{i=1}^n(X_i - \bar{X})(Y_i - \bar{Y})}{\sum_{i=1}^n(X_i - \bar{X})^2}$$
+$$\hat{\beta_0} = \bar{Y} - \hat{\beta_1}\bar{X}$$
+$$s^2 = \frac{1}{n-2}\sum_{i=1}^nY_i - \hat{\beta_0} - \hat{\beta_1}X_i$$
+gdzie $s^2$ jest nieobciążonym estymatorem wariancji błędów.
+Teoretyczne wyliczenie podanych powyżej estymatorów wygląda następująco (intercept, to wyraz wolny, a copiers odnosi się do współczynnika kierunkowego przy X).
+
+## Wyliczenie teoretyczne 
+
+### Estymatory
+
+```{r}
+slope = cov(X,Y)/var(X)                 
+intercept = mean(Y) - slope*mean(X)     
+est = matrix(c(intercept, slope), nrow = 1, ncol = 2)
+rownames(est) = " "
+colnames(est) = c("intercept", "copiers")
+
+n = nrow(copier_service)
+df = n - 2  
+s_2 = (n-1)*var(Y - intercept - slope*X)
+s_2 = s_2/df
+
+est
+s_2
+```
+
+Następną rzeczą jaką chcielibyśmy zrobić jest znalezienie przedziału ufności dla $\beta_1$ o współczynniku ufności 0.95, który wyznacza się na podstawie statystyki testowej T, która pochodzi z rozkładu studenta z $n-2$ stopniami swobody, danej wzorem:
+$$T = \frac{\hat{\beta_1}-\beta_1}{s(\hat{\beta_1})},$$
+gdzie 
+$$s^2(\hat{\beta_1}) = \frac{s^2}{\sum_{i=1}^n(X_i-\bar{X})^2}.$$
+Wówczas przedział ufności dla parametru $\beta_1$ wyznaczamy następująco:
+$$[\hat{\beta_1} - t_cs(\hat{\beta_1}),\  \hat{\beta_1} + t_cs(\hat{\beta_1})],$$
+tutaj $t_c$ oznacza kwantyl rzędu $1-\frac{\alpha}{2}$ z rozkładu studenta z $n-2$ stopniami swobody. Dla naszego zagadnienia wyliczenia teoretyczne przedstawione są poniżej.
+
+```{r}
+alfa = 0.05
+t_c = qt(1 - alfa/2, df)
+s_2_slope = s_2/((n-1)*var(X))                    
+s_2_slope 
+```
+
+### Wyliczenia teoretyczne
+
+### Przedzial ufnosci
+
+```{r}
+lower_bound = slope - t_c*sqrt(s_2_slope) 
+upper_bound = slope + t_c*sqrt(s_2_slope) 
+conf_int = matrix(c(lower_bound, upper_bound), nrow = 1) 
+rownames(conf_int) = " "
+colnames(conf_int) = c( "lower bound", "upper bound")
+conf_int
+```
+Na podstawie statystyki T możemy również testować czy $\beta_1$ jest różne od zera. Przeprowadzimy test istotności dla $\beta_1$.
+Testowane hipotezy:
+
+$H_0:\ \beta_1 = 0,$ 
+
+$H_1:\ \beta_1 \neq 0$
+
+Statystyka testowa jest postaci:
+$$ T = \frac{\hat{\beta_1} - 0}{s(\hat{\beta_1})},$$
+gdzie s jest jak wyżej. Będziemy odrzucali hipotezę zerową, gdy $|T|>t_c$, dla tego samego $t_c$ jak wcześniej. Możemy również wyznaczyć p-wartość dla tego testu: $p= P(|z|>|T|)$, $z$ ma rozkład $t(n-2).$
+Poniżej przedstawione jest testowanie dla naszych danych.
+
+### Statystyka testowa
+
+```{r}
+sqrt(s_2_slope)
+T_slope = slope / sqrt(s_2_slope)       
+T_slope
+```
+
+### p-wartość
+
+```{r}
+p_value = pt(-T_slope, df)*2            
+p_value
+T_slope > t_c
+```
+Na podstawie naszych wyników odrzucamy hipotezę zerową i przyjmujemy hipotezę alternatywną, co oznacza, że na poziomie ufności 0.95 wartość współczynnika kierunkowego jest różna od zera.
+
+### Model z R
+
+Wszystkie te wyniki można było uzyskać z wbudowanej funkcji z R, co jest dość wygodne, bo zajmuje dosłownie kilka linijek, co widać poniżej. Istnieje funkcja, która zwraca model regresji wyliczony dla naszych danych z potrzebnymi parametrami i innymi istotnymi dla nas informacjami. Parametry wyliczone przy pomocy wbudowanej funkcji wyznaczamy poniżej.
+
+
+```{r}
+model <- lm(service ~ copiers, data = copier_service)
+```
+
+### Estymatory
+
+```{r}
+model$coefficient
+```
+Widzimy, że estymatory zostały poprawnie wyliczone, bo niezależnie od tego czy użyliśmy wbudowanej funkcji z R czy liczyliśmy ręcznie, to doszliśmy do tych samych wyników.
+
+### Przedzial ufnosci
+
+```{r}
+confint(model)
+```
+
+### Wartość statystyki T
+
+```{r}
+summary(model)$coefficients[2,3]
+```
+
+### p-wartość
+
+```{r}
+summary(model)$coefficients[2,4]
+```
+
+W obu przypadkach wyniki są praktycznie takie same.
+
+
+## Zadanie 3
+
+Teraz naszym celem jest podanie średniego czasu serwisu, jakiego możemy się spodziewać dla 11 maszyn. Jest to dość proste, gdy zastosujem funkcję ```predict``` dla naszego modelu i wygląda to następująco:
+```{r}
+
+predict(model, 
+        newdata = data.frame(copiers = 11), 
+        interval = "confidence")
+```
+Oczywiście to samo można liczyć samodzielnie, stosując odpowiednią teorię. To jak to zrobić w R pokazane jest poniżej. Pierwsze co robimy, to wyliczamy estymator wartości oczekiwanej dla konkretnego $X_h$, w tym zadaniu równego 11, gdzie:
+$$\hat{\mu_h}=\hat{\beta_0}+\hat{\beta_1}X_h.$$ Następnie wyliczamy pierwiastek z nieobciążonego estymatora wariancji, gdzie estymator wariancji dla wartości oczekiwanej wyliczamy ze wzoru:
+$$\sigma^2(\hat{\mu_h}) = \sigma^2\bigg(\frac{1}{n}+\frac{(X_h-\bar{X})^2}{\sum_{i=1}^n(X_i - \bar{X})^2}\bigg).$$
+Kolejnym krokiem jest wyliczenie na podstawie statystyki testowej dla wartości oczekiwanej przedziałów ufności.
+```{r}
+
+copiers_h = 11
+
+mu_h = intercept + slope*copiers_h       
+s_mu = sqrt(s_2 * (1/n + (copiers_h - mean(X))^2 /((n-1)*var(X)))) 
+# T_mu = mu_h/s_mu
+
+lower_bound_mu = mu_h - t_c*s_mu
+upper_bound_mu = mu_h + t_c*s_mu
+conf_int_mu = matrix(c(mu_h, lower_bound_mu, upper_bound_mu), nrow = 1)
+rownames(conf_int_mu) = " "
+colnames(conf_int_mu) = c("fit", "lower bound", "upper bound")
+conf_int_mu 
+```
+Po porównaniu naszych wyników z funkcją z R widzimy, że wyszło nam to samo, czyli przedził $[158.4754,\ 171.1397].$
+
+## Zadanie 4
+
+W tym zadaniu mamy podać przewidywany rzeczywisty czas serwisu, jakiego można się spodziewać, gdyby obsługiwano 11 maszyn. Tak jak w poprzednim zadaniuemy wykorzysta funkcj ```predikt```, co pokaemy poniżej.
+```{r}
+predict(model, 
+        newdata = data.frame(copiers = 11), 
+        interval = "prediction")
+```
+Drugi sposób to wyliczanie tego krok po kroku i w zasadzie cała procedura będzie wyglądała jak poprzednio, z tą różnicą, że tym razem trzeba będzie wyliczyć wariancję błędu predykcji. Wzór na tę wariancję wygląda tak jak podano na dole i jest to suma wariancji $Y_h$ oraz wariancji estymatora wartości oczekiwanej,
+$$s^2(pred) = Var(Y_h - \hat{\mu_h}) = \sigma^2\bigg(1+ \frac{1}{n}+\frac{(X_h-\bar{X})^2}{\sum_{i=1}^n(X_i - \bar{X})^2}\bigg).$$
+```{r}
+
+s_2_pred_mu = s_2*(1 + 1/n + (copiers_h - mean(X))^2/((n-1)*var(X)))
+
+lower_bound_pred_mu = mu_h - t_c*sqrt(s_2_pred_mu)
+upper_bound_pred_mu = mu_h + t_c*sqrt(s_2_pred_mu)
+conf_int_pred_mu = matrix(c(mu_h, lower_bound_pred_mu, upper_bound_pred_mu), nrow = 1)
+rownames(conf_int_pred_mu) = " "
+colnames(conf_int_pred_mu) = c("fit", "lower bound", "upper bound")
+conf_int_pred_mu 
+```
+Tak jak można było się spodziewać przedział predykcji jest szerszy od przedziału z poprzedniego zadania. Jest to spowodowane tym, że w tym wypadku chcemy podać przedział, do któregoz prawdopodobieństwem 0.95 wpadłaby nowa wartość. 
+
+## Zadanie 5
+Dane z granicami predykcji $95\%$ dla poszczególnych obserwacji zaprezentowane są poniżej na wykresie, na którym kolorem czrwonym zaznaczona jest prosta predykcji z przykładowymi przewidywanymi obesrwacjami, kolorem niebieskim zaznaczono przedział ufności, natomiast zacieniony obszer to przedział predykcyjny, na czarno zaznaczone są dane, na podstawie których tworzyliśmy model. 
+```{r}
+predictions <- data.frame(predict(model, 
+                                  newdata = data.frame(copiers = 1:10), 
+                                  interval = "prediction"),
+                                  copiers = 1:10)
+confidence <- data.frame(predict(model, 
+                                  newdata = data.frame(copiers = 1:10), 
+                                  interval = "confidence"),
+                          copiers = 1:10)
+
+ggplot() +
+  geom_point(copier_service, mapping = aes(x = copiers, y = service)) +
+  geom_point(predictions, mapping = aes(x = copiers, y = fit), col = "red") +
+  geom_ribbon(predictions, 
+              mapping = aes(x = copiers, ymin = lwr, ymax = upr), 
+              alpha = 0.2, colour = "white") +
+  geom_line(confidence, 
+              mapping = aes(x = copiers, y= lwr), 
+              alpha = 0.2, colour = "blue") +
+  geom_line(confidence, 
+              mapping = aes(x = copiers, y= upr), 
+              alpha = 0.2,  colour = "blue") +
+  geom_abline(slope = coef(model)[2], intercept = coef(model)[1], col = "red")
+```
+
+## Zadanie 6
+
+Szukamy mocy testu, czyli prawdopodobieństwa odrzucenia hipotezy zerowej, dla tego zadania $H_0: \beta_1 = 0$, gdy prawdziwa jest hipoteza alternatywna, w tym zadaniu rzeczywiste $beta_1 = 1$. 
+Przy tym założeniu statystyka T ma niecentralny rozkład studenta z $38$ stopniami swobody i parametrem niecentralności $\delta = \frac{\beta_1}{\sigma\hat{\beta_1}}$, który wyliczymy poniżej przy pomocy R, wraz z mocą dla tego testu ($\pi(\beta_1=1)$).
+
+```{r}
+
+# (a)
+# moc testu dla beta1 = 1
+n = 40 
+SSX = 1000
+s2 = 120
+s2_beta1 = s2 / SSX
+df = n - 2
+alfa = 0.05
+
+delta_1 = 1 / sqrt(s2_beta1)
+delta_1
+
+tc = qt(1 - alfa/2, df)
+pi_1 = 1 - pt(tc, df, delta_1) + pt(-tc, df, delta_1)
+pi_1
+```
+
+W drugeij czeęści tego zadania chcemy narysować wykres funkcji mocy testu dla $\beta_1$ z przedziłu $[-2,\ 2]$.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+# (b)
+
+beta1 = seq(from=-2.0, to= 2.0, by= 0.05)
+pi = 1 - pt(tc, df, beta1 / sqrt(s2_beta1)) + pt(-t_c, df, beta1 / sqrt(s2_beta1))
+power_test = data.frame(beta1,pi)
+colnames(power_test) = c("beta1", "powers")
+ggplot() +
+    geom_line(power_test, mapping = aes(x = beta1, y = powers)) +
+    geom_line(data.frame(beta1, y = min(pi)), mapping = aes(x =     beta1, y), 
+              colour = "red")
+```
+
+Minimum krzywej wypada wtedy, gdy H0 jest prawdziwa i jest to równe poziomowi istotności testu.
+
+## Zadanie 7
+
+Naszym zadaniem jest wygenerować wektor X o długości 200 z rozkładu wielowymiarowego normalnego $N(0,\frac{1}{200}I)$, a następnie 1000 wektorów Y z modelu przedstawiającego zleżność, że $Y = 5 +\beta_1X +\epsilon$, przy podanych założeniach na $\beta_1$ i $\epsilon$. Kolejną rzeczą jaką chcemy zrobić jest obliczenie prawdopodobieństwo odrzucenia hipotezy $H_0: \beta_1= 0$ na podstawie częstości odrzuceń występujących w naszej próbe, a następnie porównanie ich z teoretycznym prawdopodobieństwem błędu.
+Aby oszacować prawdopodobieństwo odrzucenia na podstawie naszej próby tworzymy funkcję o nazwie ```empirical_result```, która zlicza ile razy odrzucamy hipotezę zerową, a następnie liczy średnią z tego wyniku. 
+
+```{r}
+
+empirical_result <- function(beta1, epsilon){
+  x = rnorm(200, 0, sqrt(1/200))
+  res = numeric(1000)
+  eps = matrix(epsilon, 200, 1000)
+  for (i in 1:1000){
+    y = 5 + beta1*x + eps[,i]
+    reg = lm(y~x)
+    res[i] = (summary(reg)$coefficients[2, 4] < 0.05)
+    
+  }
+  return(mean(res))
+}
+```
+Funkcje ```theoretical_result``` zlicza moce testów i liczy z nich średnią z wszystkich prób.
+```{r}
+theoretical_result <- function(beta1){
+  x <- rnorm(200, 0, sqrt(1/200))
+  powers <- numeric(1000)
+  eps <- matrix(rnorm(200*1000), 200, 1000)
+  for(i in 1:1000){
+    y <- 5 + beta1*x + eps[,i]
+    reg <- lm(y~x)
+    s <- sd(reg$residuals)*sqrt((200-1)/(200-2))/(var(x)*199)
+    delta <- beta1/s
+    powers[i] <- 1 - pt(qt(1-0.05/2, 200 - 2), 200-2, delta) + pt(-qt(1-0.05/2, 200-2), 200-2, delta)
+  }
+  return(mean(powers))
+}
+```
+
+### Wyniki dla (a)-(b) - prawdopodobiństwo popełnienia błędu I rodzaju
+
+Wyniki na podstawie empirycznych doświadczeń:
+
+(a)
+```{r}
+empirical_result(0, rnorm(200*1000, 0, 1))
+```
+(b)
+```{r}
+empirical_result(0, rexp(200*100, 1))             #estimator of probability of type I error
+```
+Teoretyczne prawdopodobieństwo dla tego problemu:
+```{r}
+theoretical_result(0)       
+```
+Prawdopodobieństwo popełnienia błędu pierwszego rodzaju w podpunktach (a)-(b) teoretycznie wynosi 0.05, natomiast z naszych doświadczeń wynika, że został on popełniony rzadziej niz byśmy się tego spodziewali.
+
+### Wyniki dla (c)-(d) - moc testu 
+
+Wyniki na podstawie empirycznych doświadczeń:
+(c)
+```{r}
+1 - empirical_result(1.5, rnorm(200*1000, 0, 1))  
+```
+(d)
+```{r}
+1 - empirical_result(1.5, rexp(200*1000, 1))      
+```
+Teoretyczne prawdopodobieństwo dla tego problemu:
+```{r}
+1 - theoretical_result(1.5) #theoretical value of test power 
+```
+Moc testu liczona dla podpunktów (c)-(d) teoretycznie powinna być nieco wyższa, niż wyszło nam z doświadczeń, ale mimo to wyniki są do siebie zbliżone. W tym przypadku wyszło nam, że rzadziej popełniamy błąd I rodzaju, ale trochę częściej przytrafiał się nam błędy II rodzaju. Wynika to z tego, że rozkład statystyki przy H0 i H1 mało się różnił.
